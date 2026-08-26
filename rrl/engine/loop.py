@@ -119,6 +119,7 @@ def run(
                     "stdout": res.stdout,
                     "error": res.error,
                     "has_final": res.has_final,
+                    "final": res.final if res.has_final else None,
                 }
             )
 
