@@ -24,6 +24,7 @@ from .backend import (
 )
 from .budget import Budget, BudgetExceeded
 from .loop import Result, run
+from .pyodide_sandbox import PyodideSandbox, pyodide_available
 from .sandbox import CellResult, LocalSandbox, SandboxTimeout
 
 __all__ = [
@@ -40,6 +41,8 @@ __all__ = [
     "BACKENDS",
     "Usage",
     "LocalSandbox",
+    "PyodideSandbox",
+    "pyodide_available",
     "CellResult",
     "SandboxTimeout",
 ]

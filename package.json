@@ -1,0 +1,10 @@
+{
+  "name": "research-rlm-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node host for the Pyodide (WASM) sandbox used by the RLM engine. Run `npm install` to enable PyodideSandbox.",
+  "dependencies": {
+    "pyodide": "0.26.4"
+  }
+}
