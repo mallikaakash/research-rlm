@@ -10,6 +10,50 @@ Format per entry: **the doubt / context** → **what I learned** → (sometimes)
 
 ## 2026-08-26
 
+### How is an RLM actually different from a normal agentic loop (Cursor)?
+**Doubt (kept circling back):** the trace looks exactly like any agent — think →
+tool call → observe → think again. So how is RLM different from Cursor/Claude Code?
+
+**What I learned — the honest answer:**
+- **At the loop level they are identical.** Think→act→observe→repeat is the *ReAct
+  loop*, shared by RLM, Cursor, and every tool-calling agent. RLM is NOT a different
+  loop. The difference lives in three places, not the loop:
+  1. **What the tools act on.** A normal agent's tools act *outward* on the world
+     (`edit_file`, `run_terminal`) to change it. An RLM's main tool acts *inward*:
+     it runs code over the **input held as a variable, kept out of the context
+     window**, to *comprehend* something too big to fit.
+  2. **The model calls itself as a composable function.** `answers = [rlm(s) for s
+     in sections]` — self-invocation, combined in code. External tools (grep, shell)
+     aren't that. This is the "R" in RLM.
+  3. **Sub-results return as VALUES, not context.** A normal agent appends every
+     observation to the conversation (context grows with all it has seen). An RLM
+     gets a sub-call's answer back as a *REPL variable* it may not even print — so
+     the parent's context stays tiny no matter how much sub-work happened. This is
+     the mechanism behind "unbounded context".
+- **At depth 0 with no `rlm()` calls, an RLM literally *is* a ReAct code agent.**
+  The RLM-specific behavior is invisible until the input is big enough to force
+  recursion — which is why our early runs (depth=0) looked like any agent.
+- **The boundary is genuinely blurry** — Zhang's own "scaffolds" thesis argues
+  agents/scaffolds/models are converging. So "these look the same" is a *correct*
+  observation, not a misunderstanding. RLM is a *species* of agent (tool = code
+  REPL; recursion = self-calls; target = its own oversized input), not a new genus.
+
+One-liner: **a normal agent uses tools to act on the world; an RLM uses code — and
+copies of itself — to reason over an input too big for its context. Same loop;
+different target, plus self-recursion.**
+
+### Async vs. parallel — and how the reference RLMs compare
+**Doubt:** is fast-rlm / the original RLM synchronous or async, sequential or parallel?
+- **Async ≠ parallel.** *Async* is the mechanism (calls are `await`ed, non-blocking).
+  *Parallel* is actually running several at once (you must explicitly gather/batch).
+- **Zhang's RLM** (`alexzhang13/rlm`): **async AND parallel** — `rlm_query_batched` /
+  `llm_query_batched`, bounded by **`max_concurrent_subcalls`**.
+- **fast-rlm**: **async** (`await llm_query(...)`); parallel **not documented**.
+- **Ours (research-rlm)**: **async in contract** (`await llm/rlm`) but **sequential in
+  execution** — bridges service one call at a time. Parallel fan-out is the gap; the
+  pattern to copy is Zhang's `max_concurrent_subcalls` (a host-side concurrency pool +
+  `asyncio.gather` support + a thread-safe budget).
+
 ### Would DSPy be useful here?
 **Doubt:** should we use DSPy in this project?
 
