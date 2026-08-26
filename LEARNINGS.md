@@ -10,6 +10,44 @@ Format per entry: **the doubt / context** → **what I learned** → (sometimes)
 
 ## 2026-08-26
 
+### Why Deno AND Pyodide — host vs. guest, and the sandbox landscape
+**Doubt:** if Pyodide (WASM) is already the secure sandbox, what does Deno even add?
+
+**What I learned:**
+- **WASM can't run by itself** — it's bytecode for a virtual CPU that only executes
+  *inside a host program*. So it's not two stacked sandboxes; it's **host + guest.**
+  Pyodide is the guest; **Deno is the host.**
+- The host's jobs: (1) run the WASM engine, (2) provide the imported **bridges**,
+  (3) run the *trusted* orchestration (the loop, model API calls, corpus disk I/O),
+  (4) do the real I/O the guest requests. Security (no syscalls) comes from WASM;
+  the host is the trusted warden outside the box.
+- **Trust boundary:** the *model's* code is untrusted → WASM. *Our* orchestration is
+  trusted → runs in the host directly (it needs real network/disk to work).
+- **What Deno adds over Node:** both can host Pyodide, but Deno is
+  **secure-by-default** (`--allow-net`, `--allow-read`, …), so even the trusted host
+  sits behind an outer OS-permission wall → **defense in depth** (WASM = inner cage,
+  Deno perms = outer cage). Node = as privileged as our current Python.
+- **Three slots to choose independently:**
+  - *Host/embedder (the "Deno" role):* Browser, Node, **Deno**, Bun, or standalone
+    WASM runtimes (`wasmtime`, `wasmer`, `WasmEdge`, `wazero`). `wasmtime-py` lets
+    **Python itself** be the host — no JS needed.
+  - *Sandboxed Python (the "Pyodide" role):* **Pyodide** (rich, JS-hosted), CPython
+    **WASI** build, RustPython→WASM, MicroPython.
+  - *Non-WASM sandboxing:* subprocess (ours) < seccomp < namespaces (`bubblewrap`,
+    `nsjail`, `firejail`) / Landlock < containers (Docker) < **gVisor** < **microVMs**
+    (Firecracker — how Lambda works) < full VMs. Plus **V8 isolates** (Cloudflare
+    Workers) and hosted code-exec services (**E2B**, Modal, Riza) that run untrusted
+    code for you.
+- **Trade-off axes:** security, startup/overhead, *compatibility* (WASM can't run
+  arbitrary C extensions / `pip install`; containers & VMs can), and ops complexity
+  (WASM is just a library; VMs need infra).
+
+**Why it matters / for us:** our model code mostly does string/regex/slice work over
+a paper + bridge calls — no numpy needed — which is Pyodide's sweet spot. Since the
+project is Python-first, we don't have to adopt Deno: **`wasmtime-py` + a WASI
+CPython** keeps it one language (at the cost of Pyodide's package richness). A
+microVM/E2B-style sandbox only earns its keep if we later need full compatibility.
+
 ### Process isolation vs. sandboxing — and how Pyodide/Deno actually work
 **Doubt:** our v1 sandbox spawns a subprocess we can kill — but that's not really
 safe, is it? It could still mess up my computer. And I couldn't picture how
