@@ -12,7 +12,16 @@ The four ingredients of any RLM live in this package:
   4. the exec loop with truncated feedback -> loop.py
 """
 
-from .backend import Backend, MockBackend, OpenRouterBackend, Usage
+from .backend import (
+    BACKENDS,
+    Backend,
+    DeepSeekBackend,
+    MockBackend,
+    OpenAICompatBackend,
+    OpenRouterBackend,
+    Usage,
+    make_backend,
+)
 from .budget import Budget, BudgetExceeded
 from .loop import Result, run
 from .sandbox import CellResult, LocalSandbox, SandboxTimeout
@@ -23,8 +32,12 @@ __all__ = [
     "Budget",
     "BudgetExceeded",
     "Backend",
+    "OpenAICompatBackend",
+    "DeepSeekBackend",
     "OpenRouterBackend",
     "MockBackend",
+    "make_backend",
+    "BACKENDS",
     "Usage",
     "LocalSandbox",
     "CellResult",

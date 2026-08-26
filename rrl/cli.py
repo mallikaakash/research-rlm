@@ -35,7 +35,12 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="rrl-engine", description="Run one RLM query.")
     ap.add_argument("query", nargs="?", help="the task or question")
     ap.add_argument("--input-file", help="file whose contents are prepended to PROMPT")
-    ap.add_argument("--model", default=os.environ.get("RLM_MODEL", "openai/gpt-5-mini"))
+    ap.add_argument(
+        "--provider",
+        default=os.environ.get("RLM_PROVIDER", "deepseek"),
+        help="model provider (default: deepseek; also: openrouter)",
+    )
+    ap.add_argument("--model", default=os.environ.get("RLM_MODEL"), help="model id (default: the provider's)")
     ap.add_argument("--max-steps", type=int, default=8)
     ap.add_argument("--max-depth", type=int, default=4)
     ap.add_argument("-v", "--verbose", action="store_true", help="trace the recursion on stderr")
@@ -52,10 +57,10 @@ def main(argv: list[str] | None = None) -> int:
     prompt = "\n\n".join(parts)
 
     # Imported here so --help works even without the package installed as a wheel.
-    from .engine import Budget, OpenRouterBackend, run
+    from .engine import Budget, make_backend, run
 
     try:
-        backend = OpenRouterBackend(model=args.model)
+        backend = make_backend(args.provider, model=args.model)
     except RuntimeError as e:
         sys.stderr.write(f"error: {e}\n")
         return 2

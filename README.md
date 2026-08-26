@@ -31,26 +31,41 @@ host and return values, so the model composes them with ordinary Python.
 
 ## Run it
 
+The default provider is **DeepSeek** (any OpenAI-compatible provider works):
+
 ```bash
 uv sync                       # or: pip install -e .
-export OPENROUTER_API_KEY=sk-...
+export DEEPSEEK_API_KEY=sk-...
 
 rrl-engine "What is 12 * 12? Reply with just the number."
 rrl-engine -v --input-file paper.txt "Summarize the single main claim."
+
+# other providers:
+rrl-engine --provider openrouter --model openai/gpt-5-mini "..."
 ```
 
-`-v` traces the recursion (agents, cells, `llm`/`rlm` calls) on stderr.
+`-v` traces the recursion (agents, cells, `llm`/`rlm` calls) on stderr. Models:
+`deepseek-chat` (default) or `deepseek-reasoner`; override with `--model`. Key
+lookup order is the provider's env var (`DEEPSEEK_API_KEY`) → `RLM_API_KEY`; set
+`RLM_PROVIDER` / `RLM_BASE_URL` to change defaults.
 
-## Test it (no API key needed)
+## Test it
+
+Offline (no API key, deterministic — drives the **real** sandbox subprocess and
+bridge protocol with a mock model):
 
 ```bash
 python tests/test_engine.py        # prints "ok"
-# or:  pytest
+# or:  pytest tests/test_engine.py
 ```
 
-The test drives the **real** sandbox subprocess and bridge protocol with a
-deterministic mock model, exercising code execution, recursion, `FINAL()`, and
-budget accounting end to end.
+Live smoke test (a real DeepSeek round-trip through the whole engine; skips when
+no key is set):
+
+```bash
+export DEEPSEEK_API_KEY=sk-...
+python tests/test_live.py          # finds a hidden fact by exploring PROMPT with code
+```
 
 ## The sandbox, honestly
 
