@@ -3,13 +3,14 @@ name = "research-rlm"
 version = "0.1.0"
 description = "A minimal, from-scratch Recursive Language Model (RLM) engine."
 requires-python = ">=3.10"
-dependencies = ["requests>=2.28"]
+dependencies = ["requests>=2.28", "pydantic>=2", "PyYAML>=6"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 
 [project.scripts]
 rrl-engine = "rrl.cli:main"
+rrl-read = "rrl.read:main"
 
 [build-system]
 requires = ["hatchling"]

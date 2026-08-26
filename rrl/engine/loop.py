@@ -47,10 +47,14 @@ def run(
     depth: int = 0,
     max_steps: int = 8,
     model: str | None = None,
+    instruction: str | None = None,
     sandbox_factory: Callable = LocalSandbox,
     on_event: Optional[Callable[[dict], None]] = None,
 ) -> Result:
-    """Run one RLM agent over `prompt`; recurse via the rlm() bridge."""
+    """Run one RLM agent over `prompt`; recurse via the rlm() bridge.
+
+    `instruction` is the task; `prompt` is the content it operates on.
+    """
     budget = budget or Budget()
     budget.enter(depth)  # enforces max_depth; may raise BudgetExceeded
 
@@ -84,7 +88,7 @@ def run(
 
     messages = [
         {"role": "system", "content": SYSTEM_ROOT},
-        {"role": "user", "content": initial_user(prompt)},
+        {"role": "user", "content": initial_user(prompt, instruction)},
     ]
 
     final: object = None

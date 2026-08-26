@@ -10,6 +10,37 @@ Format per entry: **the doubt / context** → **what I learned** → (sometimes)
 
 ## 2026-08-26
 
+### Would DSPy be useful here?
+**Doubt:** should we use DSPy in this project?
+
+**What I learned:** DSPy (by Omar Khattab — also on the RLM paper) is a framework for
+*programming* LLMs: typed **signatures** (`input -> typed output`), composable
+**modules** (`Predict`, `ChainOfThought`, `ReAct`), and **optimizers** that auto-tune
+prompts/few-shot examples against a metric.
+- **Wrong tool for the engine.** DSPy is a *different paradigm* from RLM (declarative
+  LLM pipelines vs. a model writing code in a REPL). Putting it in the engine would
+  contradict "we build our own RLM engine."
+- **Right tool for extraction, later.** "Paper section → structured claims+evidence"
+  is textbook DSPy (typed output + parsing; optimizers could improve quality given a
+  small gold set). It would live in the **brain layer** (a smarter `llm()` / the note
+  assembler), not the engine. Clean split: **RLM explores; DSPy extracts.**
+- **Verdict: defer.** Heavy dep + its optimizers need eval data we don't have. Start
+  with a plain prompt + a Pydantic-style schema; revisit when extraction quality is
+  the bottleneck and we want auto-optimization.
+
+### Why deep recursion is slow in the WASM sandbox (and what a pool fixes)
+**Doubt:** what does "each Pyodide sandbox loads its own WASM, so recursion is slow"
+mean?
+- `loadPyodide()` boots the whole CPython-in-WASM interpreter (tens of MB) — a
+  **cold start** of ~seconds. Every agent (root + each `rlm()` sub-agent) spawns a
+  *fresh* sandbox for isolation, so an N-node recursion tree pays N cold starts.
+- The subprocess (`local`) sandbox spawns per agent too, but Python startup is ~50 ms
+  — negligible. The cost only bites for WASM.
+- **A pool** keeps a few Node+Pyodide processes *warm*; borrow one, reset its
+  namespace to clean (cheap), use it, return it — so the expensive load happens a few
+  times total, not once per agent. It's **pure optimization** (correctness identical),
+  hence a follow-up: make it correct first, pool when runs feel slow.
+
 ### Building the Pyodide (WASM) sandbox — what it actually took
 **Context:** we added `PyodideSandbox` (CPython-in-WASM, hosted in Node) as a real
 sandbox behind the same interface as the subprocess one.
@@ -262,3 +293,70 @@ run the call somewhere allowed (e.g. my own machine).
   "recursive" in Recursive Language Model.
 - **Shared budget across a tree.** One `Budget` object threaded through every
   sub-call bounds the *whole* recursion (depth/calls/tokens), not each agent alone.
+
+---
+
+# Reading list & curriculum — mastering this domain
+
+A tiered path to get up to speed on the ideas behind this project: RLMs, agent
+foundations, memory, recursive self-improvement, harnesses/scaffolds, and proactive
+agents. Suggested order: **Tier 0 → 1 → 2 → 3 → 4/5 → 6**, dipping into Tier 7 for
+breadth and to stay current. Each item notes *why* to read it.
+
+Maps to our build: **Tier 0–2** = the engine + read pipeline (now); **Tier 3–5** =
+the corpus/brain; **Tier 4 & 6** = the proactive Phase 2.
+
+### Tier 0 — The RLM core (our foundation — start here)
+- **Recursive Language Models** — Zhang, [blog](https://alexzhang13.github.io/blog/2025/rlm/) · [paper (arXiv 2512.24601)](https://arxiv.org/abs/2512.24601) · [code: alexzhang13/rlm](https://github.com/alexzhang13/rlm). The idea our whole engine implements: context as an environment, prompt-as-variable, recursion.
+- **fast-rlm** — [avbiswas/fast-rlm](https://github.com/avbiswas/fast-rlm) · [docs](https://avbiswas.github.io/fast-rlm/). The feature-rich reference implementation (Deno+Pyodide, structured IO, budgets).
+- **Prime Agent** — [PrimeIntellect-ai/prime-agent](https://github.com/PrimeIntellect-ai/prime-agent) · [blog](https://www.primeintellect.ai/blog/prime-agent). The closest prior art for our proactive brain (Continual Harness, `/refine`, daemon sessions).
+- **Zhang's harness trilogy** — [Language Models will be Scaffolds](https://alexzhang13.github.io/blog/2026/scaffold/) · [Harnesses are compositional generalizers](https://alexzhang13.github.io/blog/2026/harness/). Why building the *scaffold* (not just the model) is the point.
+
+### Tier 1 — Foundations of LLM agents (the canon)
+- **ReAct** — [arXiv 2210.03629](https://arxiv.org/abs/2210.03629). Reason+act loop; the baseline our RLM improves on.
+- **Reflexion** — [arXiv 2303.11366](https://arxiv.org/abs/2303.11366). Learning from failure via verbal self-feedback.
+- **Tree of Thoughts** — [arXiv 2305.10601](https://arxiv.org/abs/2305.10601). Search over reasoning paths.
+- **Toolformer** — [arXiv 2302.04555](https://arxiv.org/abs/2302.04555). Models learning to call tools.
+- **Voyager** — [arXiv 2305.16291](https://arxiv.org/abs/2305.16291). A **skill library** that grows — proto-self-improvement; directly relevant to our corpus-as-brain.
+- **Generative Agents** — [arXiv 2304.03442](https://arxiv.org/abs/2304.03442). Memory + reflection sustaining long-term behavior.
+
+### Tier 2 — Context as environment: long context, RAG, context engineering
+- **RAG: A Survey** — [arXiv 2312.10997](https://arxiv.org/abs/2312.10997). The retrieval paradigm RLMs are an alternative to.
+- **MemGPT** — [arXiv 2310.08560](https://arxiv.org/abs/2310.08560). Context as virtual memory (OS analogy) — a cousin of prompt-as-variable.
+- **From RAG to Context (2025 review)** — [RAGFlow](https://ragflow.io/blog/rag-review-2025-from-rag-to-context). Why "memory" and "context engineering" (e.g. the ACE framework) eclipsed plain RAG in 2025.
+
+### Tier 3 — Agent memory & continual learning (our corpus/brain)
+- **Letta / MemGPT runtime** — [github.com/letta-ai/letta](https://github.com/letta-ai/letta). Memory tiers as a full agent runtime.
+- **Mem0** — [github.com/mem0ai/mem0](https://github.com/mem0ai/mem0). A bolt-on memory layer (vector+graph+kv).
+- **Survey: From Storage to Experience** — [arXiv 2605.06716](https://arxiv.org/abs/2605.06716). Evolution of agent memory mechanisms.
+- **Survey: Memory in the Age of AI Agents** — [arXiv 2512.13564](https://arxiv.org/abs/2512.13564).
+- **Review: Externalization in LLM Agents** — [arXiv 2604.08224](https://arxiv.org/abs/2604.08224). Memory + skills + protocols + **harness engineering** in one frame — very on-topic.
+
+### Tier 4 — Recursively self-improving agents (the Phase-2 heart)
+- **STOP: Self-Taught Optimizer** — [arXiv 2310.02304](https://arxiv.org/abs/2310.02304). A seed improver applied to its own code.
+- **ADAS: Automated Design of Agentic Systems** — [arXiv 2408.08435](https://arxiv.org/abs/2408.08435). A meta-agent that invents better agents.
+- **Gödel Agent** — [arXiv 2410.04444](https://arxiv.org/abs/2410.04444). Self-referential policy updates.
+- **Darwin Gödel Machine** — [arXiv 2505.22954](https://arxiv.org/abs/2505.22954) (Sakana). Evolves its own code; 20%→50% on SWE-bench.
+- **SEAL: Self-Adapting Language Models** — [arXiv 2506.10943](https://arxiv.org/abs/2506.10943) (MIT). A model that writes its own finetuning data.
+- **AlphaEvolve** — [arXiv 2506.13131](https://arxiv.org/abs/2506.13131) (DeepMind). Evolutionary coding agent for algorithm discovery.
+- **Self-Improving Coding Agent (SICA)** — [overview](https://www.emergentmind.com/topics/self-improving-coding-agent-sica). An agent that edits its own scaffold.
+- Curated: [awesome-Self-Improving-Agents](https://github.com/selfimproving-agent/awesome-Self-Improving-Agents).
+
+### Tier 5 — Scaffolds, harnesses & prompt/agent optimization
+- **DSPy** — [github.com/stanfordnlp/dspy](https://github.com/stanfordnlp/dspy). Programming (not prompting) LLMs; candidate for our note-extraction later.
+- **GEPA** — [gepa-ai.github.io/gepa](https://gepa-ai.github.io/gepa/). Reflective prompt evolution; beats RL with far fewer rollouts.
+- (Zhang's scaffold/harness posts in Tier 0 are the conceptual anchor here.)
+
+### Tier 6 — Proactive agents (our Phase-2 target)
+- **Anticipate and Learn: Idle-Time Compute in Proactive Agents** — [arXiv 2605.25971](https://arxiv.org/abs/2605.25971). Using idle compute to anticipate needs — directly our proactive loop.
+- **ProActor** — [arXiv 2605.24900](https://arxiv.org/abs/2605.24900). Timing-aware RL for proactive task scheduling.
+- **When Should an AI Act?** — [arXiv 2602.22814](https://arxiv.org/abs/2602.22814). A human-centered model of *when* proactivity is welcome (matters for autonomy bounds).
+- **PROPER Agents** — [arXiv 2601.09926](https://arxiv.org/abs/2601.09926). Proactivity for knowledge-gap navigation.
+
+### Tier 7 — Curated lists & staying current
+- [WooooDyy/LLM-Agent-Paper-List](https://github.com/WooooDyy/LLM-Agent-Paper-List) — the big agent survey's paper list.
+- [luo-junyu/awesome-agent-papers](https://github.com/luo-junyu/awesome-agent-papers) — methodology/applications/challenges.
+- [yxf203/Awesome-Efficient-Agents](https://github.com/yxf203/Awesome-Efficient-Agents) — memory/tools/planning efficiency.
+- [Alex Zhang on alphaXiv](https://www.alphaxiv.org/@alex-l-zhang) — the RLM author's feed.
+
+_Note on arXiv ids: a few 2026 ids (26xx) are recent and may shift; the paper **titles** are the reliable anchor if a link 404s._

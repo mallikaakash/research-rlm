@@ -43,14 +43,19 @@ reasoning; operate on it through code and delegation.
 """
 
 
-def initial_user(prompt) -> str:
-    """The first user turn: tells the agent PROMPT exists and shows a short preview
-    (never the whole thing — that would defeat the point)."""
+def initial_user(prompt, instruction: str | None = None) -> str:
+    """The first user turn: states the task (if any), tells the agent PROMPT exists,
+    and shows a short preview (never the whole thing — that would defeat the point).
+
+    `instruction` is the task to perform; PROMPT stays pure content. This keeps the
+    engine reusable: a research read, a Q&A, or a summary all differ only here.
+    """
     text = prompt if isinstance(prompt, str) else str(prompt)
     preview = text[:400].replace("\n", " ")
     more = "" if len(text) <= 400 else f" …(+{len(text) - 400} more chars)"
+    task = f"Task: {instruction}\n\n" if instruction else ""
     return (
-        f"Begin. PROMPT is a {type(prompt).__name__} of length {len(text)}. "
+        f"{task}PROMPT is a {type(prompt).__name__} of length {len(text)}. "
         f"Preview: {preview}{more}\n\n"
         f"Explore PROMPT with code and call FINAL(answer) when you are done."
     )
