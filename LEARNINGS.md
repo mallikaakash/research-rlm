@@ -10,6 +10,37 @@ Format per entry: **the doubt / context** → **what I learned** → (sometimes)
 
 ## 2026-08-26
 
+### Would DSPy be useful here?
+**Doubt:** should we use DSPy in this project?
+
+**What I learned:** DSPy (by Omar Khattab — also on the RLM paper) is a framework for
+*programming* LLMs: typed **signatures** (`input -> typed output`), composable
+**modules** (`Predict`, `ChainOfThought`, `ReAct`), and **optimizers** that auto-tune
+prompts/few-shot examples against a metric.
+- **Wrong tool for the engine.** DSPy is a *different paradigm* from RLM (declarative
+  LLM pipelines vs. a model writing code in a REPL). Putting it in the engine would
+  contradict "we build our own RLM engine."
+- **Right tool for extraction, later.** "Paper section → structured claims+evidence"
+  is textbook DSPy (typed output + parsing; optimizers could improve quality given a
+  small gold set). It would live in the **brain layer** (a smarter `llm()` / the note
+  assembler), not the engine. Clean split: **RLM explores; DSPy extracts.**
+- **Verdict: defer.** Heavy dep + its optimizers need eval data we don't have. Start
+  with a plain prompt + a Pydantic-style schema; revisit when extraction quality is
+  the bottleneck and we want auto-optimization.
+
+### Why deep recursion is slow in the WASM sandbox (and what a pool fixes)
+**Doubt:** what does "each Pyodide sandbox loads its own WASM, so recursion is slow"
+mean?
+- `loadPyodide()` boots the whole CPython-in-WASM interpreter (tens of MB) — a
+  **cold start** of ~seconds. Every agent (root + each `rlm()` sub-agent) spawns a
+  *fresh* sandbox for isolation, so an N-node recursion tree pays N cold starts.
+- The subprocess (`local`) sandbox spawns per agent too, but Python startup is ~50 ms
+  — negligible. The cost only bites for WASM.
+- **A pool** keeps a few Node+Pyodide processes *warm*; borrow one, reset its
+  namespace to clean (cheap), use it, return it — so the expensive load happens a few
+  times total, not once per agent. It's **pure optimization** (correctness identical),
+  hence a follow-up: make it correct first, pool when runs feel slow.
+
 ### Building the Pyodide (WASM) sandbox — what it actually took
 **Context:** we added `PyodideSandbox` (CPython-in-WASM, hosted in Node) as a real
 sandbox behind the same interface as the subprocess one.
