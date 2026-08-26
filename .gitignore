@@ -6,3 +6,5 @@ venv/
 .pytest_cache/
 corpus/
 .env
+node_modules/
+package-lock.json

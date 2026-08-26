@@ -67,29 +67,48 @@ export DEEPSEEK_API_KEY=sk-...
 python tests/test_live.py          # finds a hidden fact by exploring PROMPT with code
 ```
 
-## The sandbox, honestly
+## Sandboxes
 
-v1 runs model code in a **Python subprocess** (`LocalSandbox`). That buys process
-isolation plus kill/timeout — **not** security isolation; code in the sandbox can
-still touch the real machine. It sits behind a small interface (`run_cell` /
-`close`), so a **Pyodide/WASM sandbox** (`PyodideSandbox`) is a drop-in replacement,
-which is the planned next step. Run v1 on inputs you trust (e.g. arXiv papers you
-fetched).
+Two, behind one `run_cell` / `close` interface (pick with `--sandbox`):
+
+- **`local`** (default) — a **Python subprocess** (`LocalSandbox`). Process
+  isolation + kill/timeout, but **not** security isolation; code here can still
+  touch the host. Fast, no extra deps — good for tests and trusted input.
+- **`pyodide`** — **CPython compiled to WebAssembly** (`PyodideSandbox`), hosted in
+  Node. The model's Python runs with **no syscalls**: it cannot reach the real
+  filesystem or network. The only way out is a bridge (`llm`/`rlm`), forwarded to
+  the host. Real sandboxing — recommended before any unattended/autonomous use.
+
+Enable the WASM sandbox once:
+
+```bash
+npm install                 # installs the pyodide package (needs Node.js)
+rrl-engine --sandbox pyodide "..."
+```
+
+Note: `llm()` and `rlm()` are **async** — the model calls them as `await llm(...)`
+/ `await rlm(...)` (the WASM host round-trip is async; the same contract is used in
+both sandboxes). Each Pyodide sandbox loads its own WASM (~seconds), so deep
+recursion spawns several; a sandbox pool is a later optimization.
 
 ## Layout
 
 ```
 rrl/
   engine/
-    backend.py     # ingredient 1 — model backends
-    sandbox.py     # ingredient 3 — host side: spawn worker, run cells, bridge calls
-    worker.py      #                sandbox side: holds PROMPT, execs code, proxies bridges
-    loop.py        # ingredients 2 & 4 — the recursive REPL loop
-    budget.py      # depth / call / token limits, shared across the tree
-    prompts.py     # the system prompt + first-turn framing
-  cli.py           # `rrl-engine`
+    backend.py           # ingredient 1 — model backends (DeepSeek / OpenRouter / mock)
+    sandbox.py           # ingredient 3 — shared protocol + LocalSandbox (subprocess)
+    worker.py            #                local sandbox side: PROMPT, exec, bridge proxies
+    pyodide_sandbox.py   # the WASM sandbox host (spawns Node)
+    pyodide_worker.mjs   # WASM sandbox side: CPython-in-WASM + async bridges
+    loop.py              # ingredients 2 & 4 — the recursive REPL loop
+    budget.py            # depth / call / token limits, shared across the tree
+    prompts.py           # the system prompt + first-turn framing
+  cli.py                 # `rrl-engine`
 tests/
-  test_engine.py   # offline end-to-end test
+  test_engine.py         # offline end-to-end test (local sandbox)
+  test_pyodide.py        # offline end-to-end test (WASM sandbox; skips without Node)
+  test_live.py           # live DeepSeek round-trip (skips without a key)
 ```
 
 ## Not built yet

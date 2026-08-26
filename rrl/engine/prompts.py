@@ -20,18 +20,26 @@ print(len(PROMPT))
 The code runs in a REPL whose variables persist across turns. Whatever you print
 is fed back to you as the observation for your next turn.
 
-Tools available inside the REPL (call them like ordinary functions):
-  - llm(text)  -> str : run a FRESH, isolated model call on `text`. It does NOT
-                        see your history; its answer is returned as a value. Use
-                        it to read / summarize / answer over a CHUNK of PROMPT.
-  - rlm(text)  -> str : like llm(), but the sub-call is itself a full RLM agent
-                        that may recurse further. Use it for large sub-tasks.
-  - FINAL(answer)     : call this to finish and return `answer` as the result.
+Tools available inside the REPL. IMPORTANT: llm() and rlm() are async — you MUST
+`await` them (e.g. `answer = await llm(chunk)`):
+  - await llm(text) -> str : run a FRESH, isolated model call on `text`. It does
+                        NOT see your history; its answer is returned as a value.
+                        Use it to read / summarize / answer over a CHUNK of PROMPT.
+  - await rlm(text) -> str : like llm(), but the sub-call is itself a full RLM
+                        agent that may recurse further. Use it for large sub-tasks.
+  - FINAL(answer)          : call this (no await) to finish and return `answer`.
 
-Strategy: explore PROMPT, break large work into chunks, delegate chunks to llm()
-or rlm(), combine their results, then call FINAL(answer). Keep your OWN context
-small — never paste large slices of PROMPT into your reasoning; operate on it
-through code and delegation.
+Example turn:
+```python
+chunks = [PROMPT[i:i+5000] for i in range(0, len(PROMPT), 5000)]
+notes = [await llm("Summarize:\\n" + c) for c in chunks]
+print(notes)
+```
+
+Strategy: explore PROMPT, break large work into chunks, delegate chunks to
+`await llm()` / `await rlm()`, combine their results, then call FINAL(answer).
+Keep your OWN context small — never paste large slices of PROMPT into your
+reasoning; operate on it through code and delegation.
 """
 
 

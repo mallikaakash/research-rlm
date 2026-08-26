@@ -27,9 +27,9 @@ def test_recursive_counting():
         "print('nchunks', len(chunks))\n"
         "```",
         "```python\n"
-        "results = [rlm('CHUNK: ' + c) for c in chunks]\n"
+        "results = [await rlm('CHUNK: ' + c) for c in chunks]\n"
         "print('results', results)\n"
-        "total = llm('Add these numbers, reply with the sum: ' + ','.join(results))\n"
+        "total = await llm('Add these numbers, reply with the sum: ' + ','.join(results))\n"
         "print('total', total)\n"
         "```",
         "```python\n"

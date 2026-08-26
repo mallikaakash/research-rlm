@@ -21,6 +21,8 @@ kill/timeout — NOT security isolation. Code in here can still touch the real
 machine. A Pyodide/WASM sandbox is the planned drop-in replacement.
 """
 
+import ast
+import asyncio
 import io
 import json
 import sys
@@ -52,9 +54,15 @@ class _Final(Exception):
 
 
 def _make_bridge(name: str):
-    """Build a proxy that forwards a call to the host and blocks for the answer."""
+    """Build an async proxy that forwards a call to the host and blocks for the answer.
 
-    def proxy(*args, **kwargs):
+    Async so the model calls it as `await llm(...)` / `await rlm(...)` — the same
+    contract the Pyodide sandbox needs (where the host round-trip is genuinely async).
+    Here the round-trip is a blocking stdin read, which is fine: only one coroutine
+    runs at a time (v1 doesn't support concurrent bridge calls in this sandbox).
+    """
+
+    async def proxy(*args, **kwargs):
         _send({"op": "bridge", "name": name, "args": list(args), "kwargs": kwargs})
         resp = _recv()
         while resp.get("op") != "bridge_result":
@@ -93,8 +101,14 @@ def main() -> None:
         buf = io.StringIO()
         final, has_final, error = None, False, None
         try:
+            # Compile with top-level-await support so cells can `await llm(...)`.
+            code_obj = compile(
+                cmd.get("code", ""), "<cell>", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT
+            )
             with redirect_stdout(buf):
-                exec(cmd.get("code", ""), ns)
+                maybe_coro = eval(code_obj, ns)  # returns a coroutine iff the cell used await
+                if maybe_coro is not None:
+                    asyncio.run(maybe_coro)
         except _Final as f:
             has_final, final = True, f.value
         except BaseException:  # noqa: BLE001 — report everything back, never die on user code

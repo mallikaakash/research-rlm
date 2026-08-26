@@ -10,6 +10,32 @@ Format per entry: **the doubt / context** → **what I learned** → (sometimes)
 
 ## 2026-08-26
 
+### Building the Pyodide (WASM) sandbox — what it actually took
+**Context:** we added `PyodideSandbox` (CPython-in-WASM, hosted in Node) as a real
+sandbox behind the same interface as the subprocess one.
+
+**What I learned:**
+- **WASM bridges must be `await`ed.** The host round-trip (sandbox → host → model
+  API → back) is asynchronous, and Pyodide can't block on it synchronously without
+  SharedArrayBuffer tricks. So the model calls `await llm(...)` / `await rlm(...)`.
+  We unified *both* sandboxes on this async contract (fast-rlm uses the same).
+- **Top-level await needs a compile flag.** To run a cell that uses `await`, compile
+  with `ast.PyCF_ALLOW_TOP_LEVEL_AWAIT`; `eval(code_obj, ns)` then returns a
+  *coroutine* you `await` (or `asyncio.run`). Variables still persist to `ns`.
+- **The host must be push-based, not pull-based.** While an `exec` is mid-flight and
+  the model is `await`-ing a bridge, the Node stdin reader must keep dispatching so
+  `bridge_result` messages can resolve the pending promise. If the reader only ran
+  between execs, it would deadlock. Bridge calls carry an `_id` so replies route to
+  the right pending promise (needed once calls can overlap).
+- **Keep Pyodide's stdio off the protocol channel.** Pyodide's default stdout goes to
+  `console.log` → would corrupt our JSON on stdout. Silence it (`setStdout`) and
+  capture the model's `print()` inside Python via `redirect_stdout`.
+- **Recursion = nested WASM sandboxes.** `await rlm(...)` on the host spawns a *fresh*
+  Node+Pyodide process (~seconds each). Correct, but a sandbox pool is a future
+  optimization.
+- Verified end-to-end offline: model code reports `sys.platform == 'emscripten'`
+  (it's really in WASM), `await rlm()` recurses through the host, `FINAL()` returns.
+
 ### What sandbox does Zhang actually use? (not WASM!)
 **Doubt:** is our engine's sandbox true to Zhang's original?
 
