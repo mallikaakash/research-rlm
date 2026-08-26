@@ -108,10 +108,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", default=None)
     ap.add_argument("--sandbox", choices=["local", "pyodide"], default="local")
     ap.add_argument("--corpus", default="corpus", help="corpus directory (default: ./corpus)")
-    ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("-v", "--verbose", action="store_true", help="terse recursion trace on stderr")
+    ap.add_argument("--pretty", action="store_true", help="rich trace: syntax-highlighted code + colored panels")
     args = ap.parse_args(argv)
 
-    from .cli import _printer
+    from .cli import _resolve_renderer
     from .engine import LocalSandbox, PyodideSandbox
 
     factory = PyodideSandbox if args.sandbox == "pyodide" else LocalSandbox
@@ -122,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
             provider=args.provider,
             model=args.model,
             sandbox_factory=factory,
-            on_event=_printer if args.verbose else None,
+            on_event=_resolve_renderer(args.pretty, args.verbose),
         )
     except Exception as e:  # noqa: BLE001
         sys.stderr.write(f"error: {type(e).__name__}: {e}\n")

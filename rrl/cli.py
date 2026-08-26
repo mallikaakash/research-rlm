@@ -31,6 +31,19 @@ def _printer(event: dict) -> None:
         sys.stderr.write(f"{indent}  ↳ llm(…) -> {event.get('out')!r}\n")
 
 
+def _resolve_renderer(pretty: bool, verbose: bool):
+    """Pick an on_event renderer: --pretty (rich) > -v (terse) > none."""
+    if pretty:
+        try:
+            from .trace import RichRenderer
+
+            return RichRenderer()
+        except ImportError:
+            sys.stderr.write("note: `rich` not installed (pip install rich); falling back to -v\n")
+            return _printer
+    return _printer if verbose else None
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="rrl-engine", description="Run one RLM query.")
     ap.add_argument("query", nargs="?", help="the task or question")
@@ -49,7 +62,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--max-steps", type=int, default=8)
     ap.add_argument("--max-depth", type=int, default=4)
-    ap.add_argument("-v", "--verbose", action="store_true", help="trace the recursion on stderr")
+    ap.add_argument("-v", "--verbose", action="store_true", help="terse recursion trace on stderr")
+    ap.add_argument("--pretty", action="store_true", help="rich trace: syntax-highlighted code + colored panels")
     args = ap.parse_args(argv)
 
     parts = []
@@ -80,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         max_steps=args.max_steps,
         model=args.model,
         sandbox_factory=sandbox_factory,
-        on_event=_printer if args.verbose else None,
+        on_event=_resolve_renderer(args.pretty, args.verbose),
     )
     sys.stderr.write(f"\n[{budget.summary()}]\n")
     print(result.output)
