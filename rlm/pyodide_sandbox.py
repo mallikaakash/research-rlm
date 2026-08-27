@@ -22,8 +22,8 @@ from pathlib import Path
 from .sandbox import _ProtocolSandbox
 
 _WORKER = str(Path(__file__).with_name("pyodide_worker.mjs"))
-# Repo root (…/rrl/engine/pyodide_sandbox.py -> repo root), where node_modules lives.
-_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+# Repo root (…/rlm/pyodide_sandbox.py -> repo root), where node_modules lives.
+_REPO_ROOT = str(Path(__file__).resolve().parents[1])
 
 
 class PyodideSandbox(_ProtocolSandbox):

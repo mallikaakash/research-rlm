@@ -15,7 +15,8 @@ import hashlib
 import re
 from pathlib import Path
 
-from .engine import Budget, LocalSandbox, make_backend, run
+from rlm import Budget, LocalSandbox, make_backend, run
+
 from .note import Note, coerce_note, save_note
 
 READ_INSTRUCTION = """\
@@ -112,8 +113,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pretty", action="store_true", help="rich trace: syntax-highlighted code + colored panels")
     args = ap.parse_args(argv)
 
-    from .cli import _resolve_renderer
-    from .engine import LocalSandbox, PyodideSandbox
+    from rlm import LocalSandbox, PyodideSandbox
+    from rlm.cli import _resolve_renderer
 
     factory = PyodideSandbox if args.sandbox == "pyodide" else LocalSandbox
     try:

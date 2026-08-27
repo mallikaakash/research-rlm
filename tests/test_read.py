@@ -14,9 +14,9 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rrl.engine import MockBackend  # noqa: E402
-from rrl.note import NoteError, coerce_note, load_note  # noqa: E402
-from rrl.read import read_paper  # noqa: E402
+from rlm import MockBackend  # noqa: E402
+from research.note import NoteError, coerce_note, load_note  # noqa: E402
+from research.read import read_paper  # noqa: E402
 
 # The model's single turn: build a note dict from PROMPT and FINAL it. Note that
 # `strength: "high"` is invalid and must be coerced to "asserted"; claim c2 omits

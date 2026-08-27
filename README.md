@@ -15,10 +15,10 @@ The engine is the four ingredients of any RLM, and nothing else:
 
 | Ingredient | Where |
 |---|---|
-| 1. A swappable model backend | `rrl/engine/backend.py` (`OpenRouterBackend`, `MockBackend`) |
-| 2. `llm()` / `rlm()` recursion as bridges | `rrl/engine/loop.py` + the sandbox bridge protocol |
-| 3. The prompt held as a REPL variable | `rrl/engine/sandbox.py` + `rrl/engine/worker.py` |
-| 4. The exec loop with truncated feedback | `rrl/engine/loop.py` |
+| 1. A swappable model backend | `rlm/backend.py` (`OpenRouterBackend`, `MockBackend`) |
+| 2. `llm()` / `rlm()` recursion as bridges | `rlm/loop.py` + the sandbox bridge protocol |
+| 3. The prompt held as a REPL variable | `rlm/sandbox.py` + `rlm/worker.py` |
+| 4. The exec loop with truncated feedback | `rlm/loop.py` |
 
 Plus budgets (`budget.py`) that bound depth, calls, and tokens across the whole
 recursion tree.
@@ -93,26 +93,33 @@ recursion spawns several; a sandbox pool is a later optimization.
 
 ## Layout
 
+Clean demarcation: **`rlm/` is the pure engine** (reusable for *any* task, imports
+nothing internal); **`research/` is the harness** on top (imports `rlm`, never the
+reverse).
+
 ```
-rrl/
-  engine/
-    backend.py           # ingredient 1 — model backends (DeepSeek / OpenRouter / mock)
-    sandbox.py           # ingredient 3 — shared protocol + LocalSandbox (subprocess)
-    worker.py            #                local sandbox side: PROMPT, exec, bridge proxies
-    pyodide_sandbox.py   # the WASM sandbox host (spawns Node)
-    pyodide_worker.mjs   # WASM sandbox side: CPython-in-WASM + async bridges
-    loop.py              # ingredients 2 & 4 — the recursive REPL loop
-    budget.py            # depth / call / token limits, shared across the tree
-    prompts.py           # the system prompt + first-turn framing
+rlm/                     # THE ENGINE — the core RLM runtime (task-agnostic)
+  backend.py             # ingredient 1 — model backends (DeepSeek / OpenRouter / mock)
+  sandbox.py             # ingredient 3 — shared protocol + LocalSandbox (subprocess)
+  worker.py              #                local sandbox side: PROMPT, exec, bridge proxies
+  pyodide_sandbox.py     # the WASM sandbox host (spawns Node)
+  pyodide_worker.mjs     # WASM sandbox side: CPython-in-WASM + async bridges
+  loop.py                # ingredients 2 & 4 — the recursive REPL loop
+  budget.py              # depth / call / token limits, shared across the tree
+  prompts.py             # the system prompt + first-turn framing
+  trace.py               # the --pretty renderer (engine observability)
   cli.py                 # `rrl-engine`
-tests/
-  test_engine.py         # offline end-to-end test (local sandbox)
-  test_pyodide.py        # offline end-to-end test (WASM sandbox; skips without Node)
-  test_live.py           # live DeepSeek round-trip (skips without a key)
+research/                # THE HARNESS — this domain (stands on rlm/)
+  note.py                # the Note schema (claims as the atom)
+  read.py                # the read pipeline (paper -> Note); `rrl-read`
+  corpus.py              # corpus ops: link / contradictions / pick_goal
+seed_corpus.yaml         # the first corpus to read
+tests/                   # offline suites: engine · read · corpus · pyodide (+ live)
 ```
 
 ## Not built yet
 
-The *brain* — structured paper notes, the flat-file corpus, `link()` /
-`contradictions()`, the reactive research pipeline, and the proactive loop — all
-stand on this engine and come next.
+The **retrieval front-end** (search → fetch, to populate the corpus) and the
+**proactive loop** (schedule → pick_goal → research) — both stand on what's here.
+The engine (`rlm/`) is task-agnostic: point a different harness at it (a `coding/`
+or `ops/` sibling) and it's a different agent, no engine change.

@@ -21,7 +21,8 @@ import json
 import re
 from pathlib import Path
 
-from .engine import Budget, LocalSandbox, run
+from rlm import Budget, LocalSandbox, run
+
 from .note import Note, load_note, save_note
 
 
