@@ -19,7 +19,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from research.fetch import extract_tex, parse_arxiv_id, parse_atom_abstract  # noqa: E402
 from research.note import Note, Claim  # noqa: E402
-from research.seed import build_corpus, load_seed_ids  # noqa: E402
+from research.read import _load_text  # noqa: E402
+from research.seed import build_corpus, fetch_only, load_seed_ids  # noqa: E402
 
 
 def test_parse_arxiv_id():
@@ -79,10 +80,34 @@ def test_build_corpus_orchestration():
         assert os.path.exists(os.path.join(d, "_goals.jsonl"))
 
 
+def test_fetch_only_raw_download():
+    def fake_fetch(aid):
+        return (f"\\section{{{aid}}}\nbody", "latex")
+
+    with tempfile.TemporaryDirectory() as d:
+        seed = os.path.join(d, "seed.yaml")
+        open(seed, "w").write("a:\n  - {id: '2412.19437'}\n  - {id: '2501.12948'}\n")
+        got = fetch_only(seed, corpus_dir=d, delay=0, fetcher=fake_fetch)
+        assert set(got) == {"2412.19437", "2501.12948"}
+        assert os.path.exists(os.path.join(d, "raw", "2412.19437.txt"))
+
+
+def test_read_uses_raw_cache():
+    # A cached raw file must be used verbatim, with no network call.
+    with tempfile.TemporaryDirectory() as d:
+        raw = os.path.join(d, "raw")
+        os.makedirs(raw)
+        open(os.path.join(raw, "2412.19437.txt"), "w").write("CACHED PAPER TEXT")
+        text, kind, aid = _load_text("2412.19437", corpus_dir=d)
+        assert text == "CACHED PAPER TEXT" and aid == "2412.19437"
+
+
 if __name__ == "__main__":
     test_parse_arxiv_id()
     test_extract_tex_from_tar()
     test_extract_tex_single_gzip()
     test_parse_atom_abstract()
     test_build_corpus_orchestration()
+    test_fetch_only_raw_download()
+    test_read_uses_raw_cache()
     print("ok")

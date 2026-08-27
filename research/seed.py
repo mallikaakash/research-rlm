@@ -20,6 +20,7 @@ import yaml
 
 from rlm import LocalSandbox, PyodideSandbox
 from .corpus import link, save_index, write_goals
+from .fetch import fetch_arxiv_text
 from .read import read_paper
 
 
@@ -37,6 +38,41 @@ def load_seed_ids(seed_path: str | Path = "seed_corpus.yaml") -> list[str]:
             seen.add(i)
             out.append(i)
     return out
+
+
+def fetch_only(
+    seed_path: str | Path = "seed_corpus.yaml",
+    corpus_dir: str = "corpus",
+    *,
+    limit: int | None = None,
+    delay: float = 3.0,
+    fetcher=fetch_arxiv_text,
+) -> list[str]:
+    """Download just the raw source for every seed paper into corpus/raw/<id>.txt.
+
+    No model, no Note extraction — fast, cheap, and reliable. This also warms the
+    cache that a later structured read (`rrl-seed`) reuses instead of refetching.
+    """
+    import time
+
+    ids = load_seed_ids(seed_path)
+    if limit:
+        ids = ids[:limit]
+    raw_dir = Path(corpus_dir) / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    got = []
+    for i, aid in enumerate(ids, 1):
+        try:
+            text, kind = fetcher(aid)
+            (raw_dir / f"{aid}.txt").write_text(text, encoding="utf-8")
+            got.append(aid)
+            print(f"[{i}/{len(ids)}] {aid} -> raw/{aid}.txt  ({len(text):,} chars, {kind})")
+        except Exception as e:  # noqa: BLE001
+            print(f"[{i}/{len(ids)}] {aid} FAILED: {type(e).__name__}: {e}")
+        if delay and i < len(ids):
+            time.sleep(delay)
+    print(f"\n{len(got)} papers downloaded to {corpus_dir}/raw/")
+    return got
 
 
 def build_corpus(
@@ -88,11 +124,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--provider", default=None)
     ap.add_argument("--model", default=None)
     ap.add_argument("--sandbox", choices=["local", "pyodide"], default="local")
-    ap.add_argument("--limit", type=int, default=None, help="read only the first N papers")
+    ap.add_argument("--limit", type=int, default=None, help="process only the first N papers")
     ap.add_argument("--delay", type=float, default=3.0, help="seconds between fetches (be polite to arXiv)")
+    ap.add_argument("--raw", action="store_true",
+                    help="just download raw source to corpus/raw/, skip model note extraction")
     ap.add_argument("--pretty", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
+
+    if args.raw:
+        fetch_only(args.seed, args.corpus, limit=args.limit, delay=args.delay)
+        return 0
 
     from rlm.cli import _resolve_renderer
 

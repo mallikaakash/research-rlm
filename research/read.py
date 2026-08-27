@@ -54,13 +54,17 @@ def _fallback_id(title: str, text: str) -> str:
     return _slug(title) or "note-" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
 
 
-def _load_text(source: str) -> tuple[str, str, str | None]:
+def _load_text(source: str, corpus_dir: str = "corpus") -> tuple[str, str, str | None]:
     """Return (text, source_kind, arxiv_id|None).
 
-    An arXiv id / URL is fetched; a path is read; anything else is literal text.
+    An arXiv id / URL is served from corpus/raw/<id>.txt if cached, else fetched;
+    a path is read; anything else is literal text.
     """
     aid = parse_arxiv_id(source)
     if aid:
+        cache = Path(corpus_dir) / "raw" / f"{aid}.txt"
+        if cache.exists():
+            return cache.read_text(encoding="utf-8", errors="replace"), "latex", aid
         text, kind = fetch_arxiv_text(aid)
         return text, kind, aid
     p = Path(source)
@@ -91,7 +95,7 @@ def read_paper(
     save: bool = True,
 ) -> Note:
     """Read one paper (arXiv id/URL, file path, or raw text) into a saved Note."""
-    text, kind, aid = _load_text(source)
+    text, kind, aid = _load_text(source, corpus_dir)
     backend = backend or make_backend(provider, model=model)
 
     result = run(
