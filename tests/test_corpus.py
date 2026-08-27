@@ -14,7 +14,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rrl.corpus import (  # noqa: E402
+from research.corpus import (  # noqa: E402
     all_claims,
     build_index,
     contradictions,
@@ -23,8 +23,8 @@ from rrl.corpus import (  # noqa: E402
     pick_goal,
     related_notes,
 )
-from rrl.engine import MockBackend  # noqa: E402
-from rrl.note import Claim, Note, save_note  # noqa: E402
+from rlm import MockBackend  # noqa: E402
+from research.note import Claim, Note, save_note  # noqa: E402
 
 
 def _note(id, title, key_idea, tags, claims, oq=()):

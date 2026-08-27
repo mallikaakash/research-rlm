@@ -14,7 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rrl.engine import Budget, make_backend, run  # noqa: E402
+from rlm import Budget, make_backend, run  # noqa: E402
 
 _HAVE_KEY = bool(
     os.environ.get("DEEPSEEK_API_KEY")

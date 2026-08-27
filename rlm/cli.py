@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     prompt = "\n\n".join(parts)
 
     # Imported here so --help works even without the package installed as a wheel.
-    from .engine import Budget, LocalSandbox, PyodideSandbox, make_backend, run
+    from . import Budget, LocalSandbox, PyodideSandbox, make_backend, run
 
     try:
         backend = make_backend(args.provider, model=args.model)

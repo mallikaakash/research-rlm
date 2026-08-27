@@ -14,7 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rrl.engine import Budget, MockBackend, PyodideSandbox, pyodide_available, run  # noqa: E402
+from rlm import Budget, MockBackend, PyodideSandbox, pyodide_available, run  # noqa: E402
 
 
 def _scenario():
