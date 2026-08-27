@@ -11,6 +11,7 @@ dev = ["pytest>=7"]
 [project.scripts]
 rrl-engine = "rlm.cli:main"
 rrl-read = "research.read:main"
+rrl-seed = "research.seed:main"
 
 [build-system]
 requires = ["hatchling"]

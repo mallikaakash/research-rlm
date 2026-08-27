@@ -17,6 +17,7 @@ from pathlib import Path
 
 from rlm import Budget, LocalSandbox, make_backend, run
 
+from .fetch import fetch_arxiv_text, parse_arxiv_id
 from .note import Note, coerce_note, save_note
 
 READ_INSTRUCTION = """\
@@ -53,12 +54,27 @@ def _fallback_id(title: str, text: str) -> str:
     return _slug(title) or "note-" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
 
 
-def _load_text(source: str) -> tuple[str, str]:
-    """Return (text, source_kind). A path is read; anything else is literal text."""
+def _load_text(source: str) -> tuple[str, str, str | None]:
+    """Return (text, source_kind, arxiv_id|None).
+
+    An arXiv id / URL is fetched; a path is read; anything else is literal text.
+    """
+    aid = parse_arxiv_id(source)
+    if aid:
+        text, kind = fetch_arxiv_text(aid)
+        return text, kind, aid
     p = Path(source)
     if len(source) < 4096 and p.exists() and p.is_file():
-        return p.read_text(encoding="utf-8", errors="replace"), "file"
-    return source, "text"
+        return p.read_text(encoding="utf-8", errors="replace"), "file", None
+    return source, "text", None
+
+
+def _cache_raw(corpus_dir: str, note_id: str, text: str) -> None:
+    """Keep the fetched source in corpus/raw/<id>.txt (gitignored) so re-reads and
+    deep questions don't refetch."""
+    raw_dir = Path(corpus_dir) / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    (raw_dir / f"{note_id}.txt").write_text(text, encoding="utf-8")
 
 
 def read_paper(
@@ -74,8 +90,8 @@ def read_paper(
     on_event=None,
     save: bool = True,
 ) -> Note:
-    """Read one paper (text or file path) into a validated, saved Note."""
-    text, kind = _load_text(source)
+    """Read one paper (arXiv id/URL, file path, or raw text) into a saved Note."""
+    text, kind, aid = _load_text(source)
     backend = backend or make_backend(provider, model=model)
 
     result = run(
@@ -91,11 +107,14 @@ def read_paper(
 
     raw = result.output
     title_hint = raw.get("title", "") if isinstance(raw, dict) else ""
-    note = coerce_note(raw, fallback_id=_fallback_id(title_hint, text))
+    note = coerce_note(raw, fallback_id=aid or _fallback_id(title_hint, text))
     if note.source == "text":
         note.source = kind
+    if aid:  # the arXiv id is the canonical note id
+        note.id = aid
     if save:
         save_note(note, corpus_dir)
+        _cache_raw(corpus_dir, note.id, text)
     return note
 
 
