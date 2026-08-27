@@ -65,6 +65,10 @@ class Note(BaseModel):
     open_questions: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
 
+    # rung 4 — filled by corpus ops (link/contradictions), not the read pipeline.
+    # e.g. {"related": [...ids], "extends": [...ids], "contradicts": [...ids]}
+    connections: dict = Field(default_factory=dict)
+
     def fill_defaults(self, *, fallback_id: str) -> "Note":
         """Assign an id / read_on if the model omitted them, and number claim ids."""
         if not self.id:
