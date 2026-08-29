@@ -404,3 +404,27 @@ the corpus/brain; **Tier 4 & 6** = the proactive Phase 2.
 - [Alex Zhang on alphaXiv](https://www.alphaxiv.org/@alex-l-zhang) — the RLM author's feed.
 
 _Note on arXiv ids: a few 2026 ids (26xx) are recent and may shift; the paper **titles** are the reliable anchor if a link 404s._
+
+
+
+## 29th August 2026
+
+The core differnce between the RLM paradigm and a normal agent would be the substrate on which the work/action is performed and how exactly.
+
+For example the Cursor agent too spawns subagents which have isolated context and tool calls but their eventual goal is to perform some action outwards onto some files, directories etc.
+Whereas RLMs could be thought off as spawning LLM calls itself but with an intention to dissect its own prompt context. they also work and store in their REPL environment. Asking a sub_rlm/llm is a computational primitive that can be invoked at any time.
+
+Just having subagents/child llm calls isnt a sufficient condition to be an RLM
+
+RLM has a control structure in which it can programmatically invoke another LLM like -
+
+```
+I need to understand this section.
+
+CALL llm_query(
+    "Analyze this section and identify the important assumptions.",
+    section_17
+)
+```
+the runtime (REPL?) then catches and executes this child-llm call and returns the answer back to the parent
+Cursor and other coding agens dont really do this. They grep, search, regex from fixed set of tool calls. this is the programmatic tool call.
