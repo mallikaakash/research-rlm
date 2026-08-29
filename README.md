@@ -1,6 +1,6 @@
 # research-rlm
 
-A clean, minimal **Recursive Language Model (RLM)** — engine and brain, built from
+A clean, minimal **Recursive Language Model (RLM)** engine, built from
 scratch. This repo currently contains **v1 of the engine**: the recursive REPL
 runtime that everything else will stand on.
 
@@ -93,9 +93,9 @@ recursion spawns several; a sandbox pool is a later optimization.
 
 ## Layout
 
-Clean demarcation: **`rlm/` is the pure engine** (reusable for *any* task, imports
-nothing internal); **`research/` is the harness** on top (imports `rlm`, never the
-reverse).
+The repo is **the engine only** — `rlm/` is a pure, task-agnostic RLM core that
+imports nothing domain-specific. A harness (a coding agent, a research agent, …)
+is built *on top* of it as a sibling package: `import rlm`, supply `tools=`, done.
 
 ```
 rlm/                     # THE ENGINE — the core RLM runtime (task-agnostic)
@@ -104,22 +104,33 @@ rlm/                     # THE ENGINE — the core RLM runtime (task-agnostic)
   worker.py              #                local sandbox side: PROMPT, exec, bridge proxies
   pyodide_sandbox.py     # the WASM sandbox host (spawns Node)
   pyodide_worker.mjs     # WASM sandbox side: CPython-in-WASM + async bridges
-  loop.py                # ingredients 2 & 4 — the recursive REPL loop
+  loop.py                # ingredients 2 & 4 — the recursive REPL loop; run(..., tools=)
   budget.py              # depth / call / token limits, shared across the tree
   prompts.py             # the system prompt + first-turn framing
   trace.py               # the --pretty renderer (engine observability)
   cli.py                 # `rrl-engine`
-research/                # THE HARNESS — this domain (stands on rlm/)
-  note.py                # the Note schema (claims as the atom)
-  read.py                # the read pipeline (paper -> Note); `rrl-read`
-  corpus.py              # corpus ops: link / contradictions / pick_goal
-seed_corpus.yaml         # the first corpus to read
-tests/                   # offline suites: engine · read · corpus · pyodide (+ live)
+tests/                   # offline suites: engine · tools · pyodide (+ live)
 ```
 
-## Not built yet
+## Building a harness on top
 
-The **retrieval front-end** (search → fetch, to populate the corpus) and the
-**proactive loop** (schedule → pick_goal → research) — both stand on what's here.
-The engine (`rlm/`) is task-agnostic: point a different harness at it (a `coding/`
-or `ops/` sibling) and it's a different agent, no engine change.
+The engine exposes everything a harness needs and nothing it doesn't:
+
+```python
+from rlm import run, make_backend
+
+def read_file(path): ...        # a host-side tool
+result = run(
+    prompt=open("big.log").read(),
+    backend=make_backend(),
+    instruction="Find the root cause and quote the lines.",
+    tools={"read_file": read_file},   # the model can `await read_file(...)`
+)
+print(result.output)
+```
+
+`run()` handles the recursive REPL, the sandbox, `llm`/`rlm`, budgets, and the
+`--pretty` trace — a harness just supplies an `instruction` and `tools`.
+
+*(An earlier research harness — paper→Note, corpus ops — lives in git history; it
+was removed to keep this repo focused on the engine.)*
