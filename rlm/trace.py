@@ -45,6 +45,8 @@ class RichRenderer:
             self._line(f"↳ rlm({_short(e.get('in'))})", "magenta", pad)
         elif t == "llm":
             self._line(f"↳ llm(…) → {_short(e.get('out'))}", "dim blue", pad)
+        elif t == "tool":
+            self._line(f"⚙ {e.get('name')}({_short(e.get('args'))})", "yellow", pad)
 
     # ---- renderers ----
     def _line(self, text: str, style: str, pad) -> None:

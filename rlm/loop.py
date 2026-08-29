@@ -48,12 +48,17 @@ def run(
     max_steps: int = 8,
     model: str | None = None,
     instruction: str | None = None,
+    tools: Optional[dict[str, Callable]] = None,
     sandbox_factory: Callable = LocalSandbox,
     on_event: Optional[Callable[[dict], None]] = None,
 ) -> Result:
     """Run one RLM agent over `prompt`; recurse via the rlm() bridge.
 
-    `instruction` is the task; `prompt` is the content it operates on.
+    `instruction` is the task; `prompt` is the content it operates on. `tools` is an
+    optional {name: callable} of host-side bridges the model can `await` inside the
+    REPL (e.g. web_search, read_file) — the engine stays domain-agnostic; the harness
+    supplies the tools. Tool callables run on the host and must return JSON-serialisable
+    values. `llm`/`rlm` are reserved and cannot be shadowed.
     """
     budget = budget or Budget()
     budget.enter(depth)  # enforces max_depth; may raise BudgetExceeded
@@ -79,16 +84,28 @@ def run(
             depth=depth + 1,
             max_steps=max_steps,
             model=model,
+            tools=tools,  # sub-agents get the same tools
             sandbox_factory=sandbox_factory,
             on_event=on_event,
         ).output
 
-    bridges = {"llm": _llm, "rlm": _rlm}
+    # ---- host-side tools injected by the harness (e.g. web_search, read_file) ----
+    def _wrap_tool(name, fn):
+        def call(*args, **kwargs):
+            budget.check()
+            result = fn(*args, **kwargs)
+            emit({"type": "tool", "name": name, "args": str(list(args))[:120]})
+            return result
+
+        return call
+
+    tool_bridges = {n: _wrap_tool(n, fn) for n, fn in (tools or {}).items()}
+    bridges = {**tool_bridges, "llm": _llm, "rlm": _rlm}  # llm/rlm are reserved
     sandbox = sandbox_factory(prompt, list(bridges))
 
     messages = [
         {"role": "system", "content": SYSTEM_ROOT},
-        {"role": "user", "content": initial_user(prompt, instruction)},
+        {"role": "user", "content": initial_user(prompt, instruction, tools=list(tool_bridges))},
     ]
 
     final: object = None
