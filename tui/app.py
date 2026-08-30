@@ -151,7 +151,8 @@ def _build_target(args, backend, model) -> tuple[RunTarget, str]:
 
     def target(on_event):
         return run(
-            text, backend, budget=Budget(max_depth=args.max_depth),
+            text, backend,
+            budget=Budget(max_depth=args.max_depth, max_calls=1000, max_tokens=20_000_000),
             max_steps=args.max_steps, model=model,
             on_event=on_event, inspect_vars=True,
         )
@@ -166,8 +167,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--input-file", help="run over the contents of this file")
     ap.add_argument("--provider", default=os.environ.get("RLM_PROVIDER", "deepseek"))
     ap.add_argument("--model", default=os.environ.get("RLM_MODEL"))
-    ap.add_argument("--max-steps", type=int, default=14)
-    ap.add_argument("--max-depth", type=int, default=3)
+    ap.add_argument("--max-steps", type=int, default=50)
+    ap.add_argument("--max-depth", type=int, default=4)
     args = ap.parse_args(argv)
 
     if not (args.query or args.arxiv or args.input_file):
