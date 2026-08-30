@@ -5,12 +5,14 @@ talks to the host over a tiny line-delimited JSON protocol on stdin/stdout:
 
   host -> worker :  {"op": "init", "prompt": ..., "bridges": [...]}
                     {"op": "exec", "code": "..."}
+                    {"op": "inspect"}                     # peek at the REPL namespace
                     {"op": "bridge_result", "ok": true, "value": ...}
                     {"op": "shutdown"}
 
   worker -> host :  {"op": "ready"}
                     {"op": "bridge", "name": "llm", "args": [...], "kwargs": {...}}
                     {"op": "result", "stdout": ..., "final": ..., "has_final": ..., "error": ...}
+                    {"op": "vars", "vars": [{"name","type","repr","size"}, ...]}
 
 Bridge calls (llm/rlm/tools) are the key move: when the model's code calls a
 bridge, the worker asks the *host* to run it (the host has the network/disk) and
@@ -74,6 +76,31 @@ def _make_bridge(name: str):
     return proxy
 
 
+def _snapshot(ns: dict) -> list:
+    """Summarize the REPL namespace for the host's inspector: the data the model
+    has built up, minus dunders and the injected callables (FINAL, llm, rlm, tools).
+
+    Each entry is a small, JSON-safe dict — we never ship the value itself, just a
+    truncated repr, so a 50k-char PROMPT stays a one-line summary.
+    """
+    import types
+
+    out = []
+    for k, v in ns.items():
+        if k.startswith("__") or callable(v) or isinstance(v, types.ModuleType):
+            continue
+        try:
+            r = repr(v)
+        except Exception:  # noqa: BLE001 — a broken __repr__ must not kill inspection
+            r = "<unreprable>"
+        try:
+            size = len(v)  # meaningful for str/list/dict; skipped otherwise
+        except Exception:  # noqa: BLE001
+            size = None
+        out.append({"name": k, "type": type(v).__name__, "repr": r[:80], "size": size})
+    return out
+
+
 def main() -> None:
     ns: dict = {"__name__": "__rlm_sandbox__"}
 
@@ -95,6 +122,9 @@ def main() -> None:
         op = cmd.get("op")
         if op == "shutdown":
             return
+        if op == "inspect":
+            _send({"op": "vars", "vars": _snapshot(ns)})
+            continue
         if op != "exec":
             continue
 

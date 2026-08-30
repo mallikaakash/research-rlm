@@ -51,6 +51,7 @@ def run(
     tools: Optional[dict[str, Callable]] = None,
     sandbox_factory: Callable = LocalSandbox,
     on_event: Optional[Callable[[dict], None]] = None,
+    inspect_vars: bool = False,
 ) -> Result:
     """Run one RLM agent over `prompt`; recurse via the rlm() bridge.
 
@@ -87,6 +88,7 @@ def run(
             tools=tools,  # sub-agents get the same tools
             sandbox_factory=sandbox_factory,
             on_event=on_event,
+            inspect_vars=inspect_vars,
         ).output
 
     # ---- host-side tools injected by the harness (e.g. web_search, read_file) ----
@@ -139,6 +141,11 @@ def run(
                     "final": res.final if res.has_final else None,
                 }
             )
+
+            if inspect_vars:  # feed the observability UI a snapshot of the REPL namespace
+                snap = getattr(sandbox, "snapshot", None)
+                if snap is not None:
+                    emit({"type": "vars", "step": step, "vars": snap()})
 
             if res.has_final:
                 final = res.final

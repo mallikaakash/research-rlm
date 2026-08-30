@@ -99,6 +99,29 @@ class _ProtocolSandbox:
             else:
                 raise RuntimeError(f"unexpected message from sandbox: {msg!r}")
 
+    def snapshot(self, timeout: float = 5.0) -> list:
+        """Best-effort peek at the worker's REPL namespace (for the observability UI).
+
+        Sends {"op":"inspect"} and reads back the {"op":"vars"} summary. Uses its own
+        short timeout and swallows every error, returning [] — inspection is a debug
+        nicety and must never hang or crash an actual run. Only meaningful for the
+        Python worker; a sandbox that doesn't implement the op just yields [].
+        """
+        try:
+            self._send({"op": "inspect"})
+            if self.proc.stdout is None:
+                return []
+            ready, _, _ = select.select([self.proc.stdout], [], [], timeout)
+            if not ready:
+                return []
+            line = self.proc.stdout.readline()
+            if not line:
+                return []
+            msg = json.loads(line)
+            return msg.get("vars", []) if msg.get("op") == "vars" else []
+        except Exception:  # noqa: BLE001 — inspection is best-effort
+            return []
+
     def close(self) -> None:
         try:
             self._send({"op": "shutdown"})
