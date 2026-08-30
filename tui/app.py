@@ -22,56 +22,69 @@ import os
 import sys
 from typing import Callable
 
+from rich.panel import Panel
+from rich.rule import Rule
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import DataTable, Footer, Header, RichLog
 
+from .render import turn_renderables
 from .state import DashboardModel
 
-# A run target is a function the app runs on the worker thread. It's handed an
-# on_event callback and is expected to drive the engine with it.
-RunTarget = Callable[[Callable[[dict], None]], None]
+# A run target runs the (blocking) engine on the worker thread. It's handed an
+# on_event callback and returns the engine result (something with .output), if any.
+RunTarget = Callable[[Callable[[dict], None]], object]
 
 
 class RLMDashboard(App):
-    """Live view of one RLM run: recursion stream (left) + REPL namespace (right)."""
+    """Live view of one RLM run: recursion + context (left), REPL namespace (right)."""
 
     CSS = """
     Horizontal { height: 1fr; }
     #log  { width: 3fr; border: round $accent;    padding: 0 1; }
-    #vars { width: 2fr; border: round $secondary; }
+    #vars { width: 2fr; border: round $success; }
     """
-    BINDINGS = [("q", "quit", "Quit")]
+    BINDINGS = [("q", "quit", "Quit"), ("ctrl+c", "quit", "Quit")]
 
     def __init__(self, run_target: RunTarget, subtitle: str = ""):
         super().__init__()
         self._run_target = run_target
         self.model = DashboardModel()
         self.title = "RLM dashboard"
-        self.sub_title = subtitle
+        self.sub_title = subtitle or "running…"
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield Header(show_clock=True)
         with Horizontal():
-            yield RichLog(id="log", highlight=False, markup=False, wrap=True)
-            yield DataTable(id="vars", zebra_stripes=True)
+            yield RichLog(id="log", highlight=False, markup=False, wrap=True, auto_scroll=True)
+            yield DataTable(id="vars", zebra_stripes=True, cursor_type="row")
         yield Footer()
 
     def on_mount(self) -> None:
+        log = self.query_one("#log", RichLog)
+        log.border_title = "recursion + context (what each turn ran & saw)"
+
         table = self.query_one("#vars", DataTable)
-        table.add_columns("depth", "name", "type", "value")
+        table.border_title = "REPL namespace — ns (builds up as it works)"
+        table.add_column("d", width=1)
+        table.add_column("name", width=15)
+        table.add_column("type", width=12)
+        table.add_column("value", width=46)
+
         # Kick off the (blocking) engine on a background thread. Its events are
         # marshalled back to us via call_from_thread; the UI stays live meanwhile.
         self.run_worker(self._run_engine, thread=True, name="engine")
 
     # ---- worker thread ----
     def _run_engine(self) -> None:
+        result = None
         try:
-            self._run_target(self._emit)  # blocks here on the worker thread — fine
+            result = self._run_target(self._emit)  # blocks here on the worker thread — fine
         except Exception as e:  # noqa: BLE001 — surface engine failures in the UI, don't crash it
-            self.call_from_thread(self._write_log, f"[engine error] {e!r}")
+            self.call_from_thread(self._write, Text(f"[engine error] {e!r}", style="bold red"))
         finally:
-            self.call_from_thread(self._on_done)
+            self.call_from_thread(self._on_done, result)
 
     def _emit(self, e: dict) -> None:
         """on_event, called on the WORKER thread. Hand the event to the UI thread."""
@@ -83,14 +96,13 @@ class RLMDashboard(App):
     # ---- UI thread ----
     def _apply(self, e: dict) -> None:
         self.model.note(e)
-        line = self.model.log_line(e)
-        if line is not None:
-            self._write_log(line)
+        for renderable in turn_renderables(e):
+            self._write(renderable)
         if e.get("type") in ("vars", "cell"):
             self._refresh_vars()
 
-    def _write_log(self, text: str) -> None:
-        self.query_one("#log", RichLog).write(text)
+    def _write(self, renderable) -> None:
+        self.query_one("#log", RichLog).write(renderable)
 
     def _refresh_vars(self) -> None:
         table = self.query_one("#vars", DataTable)
@@ -98,9 +110,16 @@ class RLMDashboard(App):
         for row in self.model.variable_rows():
             table.add_row(*row)
 
-    def _on_done(self) -> None:
+    def _on_done(self, result=None) -> None:
         self.sub_title = "done — press q to quit"
-        self._write_log("── run complete ──")
+        self._write(Rule("run complete", style="dim"))
+        output = getattr(result, "output", None)
+        if output:
+            fb = " · fallback synthesis" if getattr(result, "used_fallback", False) else ""
+            body = str(output)
+            preview = body if len(body) <= 4000 else body[:4000] + f"\n… (+{len(body) - 4000} more chars)"
+            self._write(Panel(Text(preview), title=f"FINAL breakdown{fb}",
+                              title_align="left", border_style="gold1"))
 
 
 # --------------------------------------------------------------------------- CLI
@@ -112,7 +131,7 @@ def _build_target(args, backend, model) -> tuple[RunTarget, str]:
         from paper.explain import explain
 
         def target(on_event):
-            explain(
+            return explain(
                 args.arxiv, backend, model=model,
                 max_steps=args.max_steps, max_depth=args.max_depth,
                 on_event=on_event, inspect_vars=True,
@@ -131,8 +150,9 @@ def _build_target(args, backend, model) -> tuple[RunTarget, str]:
         label = (args.query or "")[:40]
 
     def target(on_event):
-        run(
-            text, backend, budget=Budget(max_depth=args.max_depth),
+        return run(
+            text, backend,
+            budget=Budget(max_depth=args.max_depth, max_calls=1000, max_tokens=20_000_000),
             max_steps=args.max_steps, model=model,
             on_event=on_event, inspect_vars=True,
         )
@@ -147,8 +167,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--input-file", help="run over the contents of this file")
     ap.add_argument("--provider", default=os.environ.get("RLM_PROVIDER", "deepseek"))
     ap.add_argument("--model", default=os.environ.get("RLM_MODEL"))
-    ap.add_argument("--max-steps", type=int, default=14)
-    ap.add_argument("--max-depth", type=int, default=3)
+    ap.add_argument("--max-steps", type=int, default=50)
+    ap.add_argument("--max-depth", type=int, default=4)
     args = ap.parse_args(argv)
 
     if not (args.query or args.arxiv or args.input_file):

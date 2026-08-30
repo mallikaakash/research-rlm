@@ -39,7 +39,7 @@ def test_variables_populate_and_refresh():
         {"name": "PROMPT", "type": "str", "repr": "'abc'", "size": 3},
     ]})
     rows = m.variable_rows()
-    assert rows == [("0", "PROMPT", "str", "'abc'  (3)")], rows
+    assert rows == [("0", "PROMPT", "str[3]", "'abc'")], rows  # size folded into type
 
     # a later snapshot at the same depth REPLACES (not appends)
     m.note({"type": "vars", "depth": 0, "vars": [
@@ -62,9 +62,32 @@ def test_done_tracks_root_final_only():
     assert m.done and m.final == "root answer"
 
 
+def test_render_shows_code_and_output():
+    from rich.syntax import Syntax
+
+    from tui.render import turn_renderables
+
+    # an assistant turn renders a header + the code it ran (syntax-highlighted)
+    rs = turn_renderables({
+        "type": "assistant", "depth": 0, "step": 1,
+        "text": "Let me chunk it.\n```python\nchunks = split(PROMPT)\n```",
+    })
+    assert any(isinstance(r, Syntax) for r in rs), "code should render as Syntax"
+
+    # a cell turn renders the observation that feeds the next turn
+    rs = turn_renderables({"type": "cell", "depth": 0, "stdout": "Total length: 131809"})
+    joined = " ".join(getattr(r, "plain", "") for r in rs)
+    assert "131809" in joined and "feeds next turn" in joined, joined
+
+    # a FINAL cell is marked
+    rs = turn_renderables({"type": "cell", "depth": 0, "has_final": True, "final": "# Report"})
+    assert any("FINAL" in getattr(r, "plain", "") for r in rs)
+
+
 if __name__ == "__main__":
     test_log_lines_by_type()
     test_depth_indent()
     test_variables_populate_and_refresh()
     test_done_tracks_root_final_only()
+    test_render_shows_code_and_output()
     print("ok")

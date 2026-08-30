@@ -68,8 +68,10 @@ class DashboardModel:
         for depth in sorted(self.variables_by_depth):
             for v in self.variables_by_depth[depth]:
                 size = v.get("size")
-                val = v.get("repr", "")
+                # fold the size into the type column (str[131809]) so the value
+                # column is pure content and stays readable
+                type_str = v.get("type", "")
                 if size is not None:
-                    val = f"{val}  ({size})"
-                rows.append((str(depth), v.get("name", ""), v.get("type", ""), _short(val, 60)))
+                    type_str = f"{type_str}[{size}]"
+                rows.append((str(depth), v.get("name", ""), type_str, _short(v.get("repr", ""), 46)))
         return rows

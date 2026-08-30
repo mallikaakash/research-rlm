@@ -13,23 +13,35 @@ from dataclasses import dataclass
 
 from rlm import Backend, Budget, LocalSandbox, make_backend, run
 
-EXPLAIN_PROMPT = """You are given the FULL LaTeX source of a research paper as PROMPT.
-Produce a THOROUGH, faithful breakdown of it in Markdown. Explore PROMPT with code,
-delegate sections to await llm()/await rlm(), and combine — never paste large slices
-into your own reasoning.
+EXPLAIN_PROMPT = """You are given the FULL LaTeX source of a research paper as PROMPT (it may be very large).
+Produce a THOROUGH, faithful breakdown of it in Markdown.
 
-Your final report MUST cover, with specifics and exact numbers/quotes where present:
-  1. Title, authors, and the one-sentence thesis.
-  2. The problem: what gap or question the paper addresses, and why it matters.
-  3. Key claims / contributions (as a list).
-  4. Methodology: the exact approach, architecture, algorithm, or setup.
-  5. Experimental setup: datasets, baselines, metrics, hyperparameters.
-  6. Results: the concrete numbers and what they show.
-  7. Limitations and what did NOT work (from the paper's own admissions).
-  8. Takeaways: why this matters and what it enables.
+Work like a Recursive Language Model. Do NOT read PROMPT yourself, and do NOT burn
+turns merely measuring section lengths or printing offsets — that is not progress.
+The real work is DELEGATING the reading to sub-calls and then synthesizing. Procedure:
 
-Build the report as a single Markdown string, then finish with FINAL(report).
-IMPORTANT: you MUST end by calling FINAL(<the markdown string>) — do not stop early."""
+  1. In 1–2 turns, split PROMPT into its logical sections — keep the actual TEXT of
+     each section (its string slice), not just its start/end offsets.
+  2. DELEGATE the reading: for EVERY section call `await llm(...)` (or `await rlm(...)`
+     for a very large section) to pull out that section's key content. Prefer doing
+     them together in ONE turn with a comprehension, e.g.:
+        notes = [await llm("Extract the claims, methods, setup, and exact numbers "
+                           "from this paper section:\\n\\n" + s) for s in sections]
+  3. Combine the notes into ONE Markdown report covering, with specifics and exact
+     numbers/quotes where present:
+        - Title, authors, one-sentence thesis
+        - Problem & motivation (the gap it addresses, why it matters)
+        - Key claims / contributions (a list)
+        - Methodology (the exact approach / architecture / algorithm)
+        - Experimental setup (datasets, baselines, metrics, hyperparameters)
+        - Results (the concrete numbers and what they show)
+        - Limitations / what did NOT work (the paper's own admissions)
+        - Takeaways (why it matters, what it enables)
+  4. Finish by calling FINAL(report).
+
+You have a generous step budget, but you MUST converge: delegate the reading to
+llm()/rlm(), then end with FINAL(<the markdown string>). Never stop early, and never
+finish by just printing section lengths — a run that never calls llm()/rlm() is wrong."""
 
 
 @dataclass
@@ -69,8 +81,10 @@ def explain(
     *,
     text: str | None = None,
     model: str | None = None,
-    max_steps: int = 14,
-    max_depth: int = 3,
+    max_steps: int = 50,
+    max_depth: int = 4,
+    max_calls: int = 1000,
+    max_tokens: int = 20_000_000,
     sandbox_factory=LocalSandbox,
     on_event=None,
     inspect_vars: bool = False,
@@ -78,7 +92,9 @@ def explain(
     """Fetch a paper (or use `text=`) and return a thorough breakdown.
 
     Pass `text=` to skip fetching (for tests, or a local paper). `on_event` /
-    `inspect_vars` are forwarded to the engine so a UI can observe the run.
+    `inspect_vars` are forwarded to the engine so a UI can observe the run. The step
+    and budget ceilings are deliberately generous so the recursive path has room to
+    converge (via FINAL) rather than tripping the deterministic fallback.
     """
     from .fetch import fetch_arxiv
 
@@ -88,7 +104,7 @@ def explain(
         text = fetch_arxiv(url_or_id)
 
     backend = backend or make_backend(model=model)
-    budget = Budget(max_depth=max_depth)
+    budget = Budget(max_depth=max_depth, max_calls=max_calls, max_tokens=max_tokens)
     result = run(
         text,
         backend,
