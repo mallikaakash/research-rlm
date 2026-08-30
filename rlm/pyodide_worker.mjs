@@ -6,10 +6,12 @@
 //   host -> worker : {"op":"init","prompt":...,"bridges":[...]}
 //                    {"op":"exec","code":"..."}
 //                    {"op":"bridge_result","ok":true,"value":...,"_id":N}
+//                    {"op":"inspect"}
 //                    {"op":"shutdown"}
 //   worker -> host : {"op":"ready"}
 //                    {"op":"bridge","name":"llm","args":[x],"kwargs":{},"_id":N}
 //                    {"op":"result","stdout":...,"final":...,"has_final":...,"error":...}
+//                    {"op":"vars","vars":[{name,type,repr,size},...]}
 //
 // Why WASM matters: the model's Python runs with NO syscalls — it cannot touch the
 // real disk or network. The only way out is an imported bridge (llm/rlm), which we
@@ -35,6 +37,24 @@ class _Final(Exception):
 
 def FINAL(value=None):
     raise _Final(value)
+
+import types as _types
+
+def _snapshot():
+    out = []
+    for k, v in list(globals().items()):
+        if k.startswith("_") or callable(v) or isinstance(v, _types.ModuleType):
+            continue
+        try:
+            r = repr(v)
+        except Exception:
+            r = "<unreprable>"
+        try:
+            size = len(v)
+        except Exception:
+            size = None
+        out.append({"name": k, "type": type(v).__name__, "repr": r[:80], "size": size})
+    return json.dumps(out, default=str)
 
 async def _exec_cell(src):
     buf = io.StringIO()
@@ -98,6 +118,11 @@ async function main() {
       py.globals.set("_CELL_SRC", msg.code ?? "");
       const resultJson = await py.runPythonAsync("await _exec_cell(_CELL_SRC)");
       send({ op: "result", ...JSON.parse(resultJson) });
+      return;
+    }
+    if (op === "inspect") {
+      const varsJson = await py.runPythonAsync("_snapshot()");
+      send({ op: "vars", vars: JSON.parse(varsJson) });
       return;
     }
     if (op === "shutdown") {

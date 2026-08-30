@@ -8,6 +8,71 @@ Format per entry: **the doubt / context** → **what I learned** → (sometimes)
 
 ---
 
+## 2026-08-30
+
+### The paper-explainer harness — how thin a harness really is
+The first real harness (`paper/`) turns the engine into "give it an arXiv link, get
+a thorough breakdown." The lesson: **the harness is thin because the engine is the
+loop.** No new loop — the paper's LaTeX *becomes* PROMPT, and `run(instruction=…)`
+already knows how to chunk/delegate/combine. The harness only adds: (1) `fetch.py`
+(arXiv id/URL → LaTeX source, stdlib only — source over PDF for exact equations and
+numbers), (2) an `EXPLAIN_PROMPT` instruction, (3) a CLI. Plus one reliability fix:
+a big paper can exhaust `max_steps` without ever calling `FINAL()` → `None`, so
+`explain()` has a deterministic **map-reduce fallback** (summarize chunks → synthesize)
+that always terminates. → *A harness = fetch + instruction + a safety net; the reasoning is the engine's.*
+
+### Making the REPL visible — the `inspect` op
+Added an opt-in `inspect_vars` path: after each cell the host sends `{"op":"inspect"}`
+and the worker replies with a summary of its namespace `ns` (name/type/repr/size,
+skipping dunders, callables, and imported modules). This is what lets a UI show the
+REPL populating (`PROMPT` → `chunks` → `notes` → `report`). Key realization from the
+"where does the variable live" question: **`ns` is just a dict in the worker process;
+the host is blind to it and only learns via printed stdout / FINAL / this new op.**
+Implemented on both sandboxes (Python worker + the WASM `.mjs`), best-effort with its
+own short timeout so it can never hang a run.
+
+### The concurrency gotcha — blocking engine + async UI (the big one)
+Building the Textual dashboard forced the canonical lesson. `run()` is **synchronous
+and blocking** (it parks on pipe/socket reads). Textual runs a **single-threaded
+asyncio event loop**. Calling `run()` on that loop's thread freezes the UI, because
+the one thread that services keys/redraws is parked in `readline()`. Fix = the
+standard pattern:
+- **Blocking work on a background thread** (`app.run_worker(fn, thread=True)`). Allowed
+  because a thread blocked on I/O **releases the GIL**, so the UI thread keeps running
+  Python. (Threads help here precisely because `run()` is I/O-bound, not CPU-bound.)
+- **Only the UI thread may touch widgets** (the single-threaded-UI invariant — same in
+  Swing/Qt/iOS/JS). The worker never draws; it **marshals** each event to the UI thread
+  via the thread-safe `call_from_thread(...)`.
+- **Events cross through a queue** (the event loop's own message queue), preserving order.
+The engine's existing `on_event` callback *is* the seam: `on_event = lambda e:
+call_from_thread(apply, e)`. → *This "blocking work on a thread, all UI on the main
+loop, events over a queue" pattern wraps ANY blocking library in ANY async UI.*
+Also learned to keep the event→view logic framework-free (`tui/state.py`) so it's
+unit-testable with plain asserts, and to test the real app headlessly with Textual's
+`run_test()` pilot (no TTY needed).
+
+### Textual = Rich's big sibling
+The "better than Rich, React-inspired" TUI framework is **Textual** (same team as Rich).
+Widgets (≈components), CSS (`.tcss`) styling, reactive state, a message/event model —
+it *is* React-for-the-terminal. Bonus: `textual serve` (textual-web) runs the exact
+same app in a browser over a websocket, zero extra code — the "maybe in the browser too"
+is a flag, not a second build.
+
+### Python idioms nailed down (closures, `*args`/`**kwargs`, the two moments)
+- **`*args`/`**kwargs`** = collectors (one star → tuple of positionals; two stars → dict
+  of keywords). The magic is the stars, not the names. In a *call*, the same stars
+  **spread** a collection back into arguments (`fn(*args, **kwargs)`). `tools[name](**args)`
+  *is* the whole dispatch mechanism of a tool-calling agent.
+- **Closure / factory**: `_wrap_tool(name, fn)` runs **once at setup** to *build* a
+  `call` function that **remembers** `name`/`fn`; `call(*args, **kwargs)` runs **later,
+  many times**, when the model invokes the tool. Two moments in time — that gap is why
+  closures confuse people. The outer function exists to bind `name`/`fn` per tool and
+  stamp out one dedicated wrapper each (a class with `__call__` or `functools.partial`
+  would do the same job).
+- **Dict-as-dispatch-table** (`bridges[name](...)`), `@dataclass`, `try/finally` for
+  guaranteed cleanup, custom exceptions for deep-to-top control flow (`BudgetExceeded`,
+  `_Final`), `{**a, **b}` merge with right-wins — the recurring vocabulary of agent code.
+
 ## 2026-08-26
 
 ### How is an RLM actually different from a normal agentic loop (Cursor)?
