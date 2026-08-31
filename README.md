@@ -126,11 +126,12 @@ runs on a background thread and its events are marshalled to the UI thread — t
 
 ### Anatomy of a turn
 
-One real step from `rrl-tui --arxiv 2512.24601` — the agent reads a paper section by
-delegating to `llm()`. The left panel renders each turn in parts; here's what they mean:
+A run of `rrl-tui` — the agent splits a paper into sections and delegates each to
+`llm()`, while the right panel shows the REPL namespace (`ns`) filling up:
 
-<!-- To show the actual screenshot instead, save it to docs/dashboard-turn.png and
-     uncomment:  ![A turn in the dashboard](docs/dashboard-turn.png)  -->
+![The RLM dashboard during a run](docs/dashboard.svg)
+
+Reading one turn, the left panel renders it in parts:
 
 ```text
 ▸ agent[0·6]                                    (1) header — depth 0, step 6
