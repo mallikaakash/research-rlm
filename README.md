@@ -172,6 +172,47 @@ Reading one turn, the left panel renders it in parts:
    the output (4) — the second only because the model wrote `print(notes_hat[:3000])`. The
    value lives silently in `ns`; `print()` is what surfaces it into the model's context.
 
+## how faithful is this to the original RLMs
+
+ok so the obvious question. is this actually an RLM, or just something that looks like
+one. short answer, it is faithful. i lined it up against alex zhang's
+[rlm](https://github.com/alexzhang13/rlm) and neural_avb's
+[fast rlm](https://github.com/avbiswas/fast-rlm) and the spine is the same.
+
+what lines up (the stuff that actually makes it an RLM):
+
+- your prompt lives as a variable in a REPL, not as tokens in the window. the model
+  never reads it directly, it writes code to poke at it.
+- one python block per turn, it runs in a sandbox, whatever it prints comes back as
+  the next turn. that is the loop.
+- special funcs get injected into the REPL: `FINAL` to finish, and the query bridges
+  to delegate.
+- delegation is recursive. a sub call gets its own agent, its own sandbox, its own
+  funcs, and it can delegate again. that recursion tree is the whole point.
+- sub results come back as values into the REPL, not as context. so the parent stays
+  tiny no matter how much work happened below it.
+
+where i went my own way (all on purpose):
+
+- fast rlm hosts the WASM in Deno. i used Node, since Deno was not in my setup. same
+  job, different js host.
+- i default to a plain python subprocess sandbox and keep the WASM one as opt in. so
+  two sandboxes behind one interface instead of one. a superset.
+- i split the query bridge in two. `llm()` is a flat single call (a leaf, it does not
+  recurse) and `rlm()` is the full recursive subagent. fast rlm folds both into one
+  `llm_query`. mine matches zhang's original split, so this is a superset too.
+- fast rlm has a `FINAL_VAR` that returns a variable's value straight out. i only have
+  `FINAL(value)` for now. small gap, easy to add.
+
+the one real gap:
+
+- parallelism. the diagrams fan out into many subagents at once. mine builds the exact
+  same tree but runs the sub calls one after another, sequential. the shape is right,
+  the concurrency is not there yet. that is the next real build.
+
+tldr, structurally true to the originals, a superset on the sandbox and the bridges,
+missing `FINAL_VAR` (trivial) and parallel fan out (the meaningful one).
+
 ## Layout
 
 `rlm/` is a pure, task-agnostic RLM core that imports nothing domain-specific.
