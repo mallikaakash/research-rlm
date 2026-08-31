@@ -124,6 +124,53 @@ The engine is blocking and synchronous; Textual runs an asyncio loop. So the eng
 runs on a background thread and its events are marshalled to the UI thread — the
 "blocking work on a thread, all UI on the main loop, events over a queue" pattern.
 
+### Anatomy of a turn
+
+One real step from `rrl-tui --arxiv 2512.24601` — the agent reads a paper section by
+delegating to `llm()`. The left panel renders each turn in parts; here's what they mean:
+
+<!-- To show the actual screenshot instead, save it to docs/dashboard-turn.png and
+     uncomment:  ![A turn in the dashboard](docs/dashboard-turn.png)  -->
+
+```text
+▸ agent[0·6]                                    (1) header — depth 0, step 6
+  I see the issue — the intro was only 14447        (NOT "depth 0.6"; the 6 is the turn)
+  chars… let me continue reading systematically.    ← the model's reasoning (cyan)
+
+  # Read Harness-Aware Training section          ┐
+  hat_start = sections[13][0]                    │  (2) the CODE the model wrote =
+  hat_end   = sections[14][0]                    │      this turn's ACTION. The
+  hat_text  = PROMPT[hat_start:hat_end]          │      `await llm(...)` is a tool call
+  notes_hat = await llm("""Extract … :\n"""      │      written AS CODE (programmatic
+                        + hat_text[:15000])       │      tool calling). Purple = syntax
+  print("=== HARNESS-AWARE TRAINING ===")        │      highlighting (numbers/keywords),
+  print(notes_hat[:3000])                        ┘      not a new call/depth.
+
+  ↳ llm(…) → Based on the provided text, here    (3) the llm BRIDGE FIRING — a separate
+     is the extracted information…                   engine event, emitted when the code
+                                                      runs and `llm` returns a value into ns.
+
+  ↩ output (feeds next turn)                      (4) the cell's stdout = the OBSERVATION
+  Harness-Aware Training length: 18030                fed back as the next turn's context.
+  === HARNESS-AWARE TRAINING ===                      The extract shows here too only because
+  ### 1. The Exact Approach… (HAT, three-stage…)      the model wrote print(notes_hat[:3000]).
+  … (+16 more lines)
+```
+
+1. **Header `agent[0·6]`** = **depth 0, step 6**. The number after `·` is the *turn*, not
+   the depth. `llm()` is a flat **leaf** call — it does **not** create a new depth. Only
+   `rlm()` recurses, and a `rlm()` call would spawn a *new* `agent[1·0]` block (a child at
+   depth 1). So there is no "0.6 → 0.7 depth"; the next turn is just `agent[0·7]`.
+2. **The code block** is the model's action. `await llm(...)` here is a *tool call written as
+   code* — the whole point of the engine. The purple is just syntax highlighting.
+3. **`↳ llm(…) → …`** is a *separate event*, printed when that code actually executes and the
+   `llm` bridge returns. Code = the intent ("I'll call llm"); this line = the call running and
+   returning a value that binds to `notes_hat` in the REPL namespace (`ns`).
+4. **The green `↩ output`** is the cell's captured stdout — what becomes the next turn's
+   context. Note the extract appears **twice**: once as the bridge's return (3), and once in
+   the output (4) — the second only because the model wrote `print(notes_hat[:3000])`. The
+   value lives silently in `ns`; `print()` is what surfaces it into the model's context.
+
 ## Layout
 
 `rlm/` is a pure, task-agnostic RLM core that imports nothing domain-specific.
