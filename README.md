@@ -214,6 +214,3 @@ print(result.output)
 
 `run()` handles the recursive REPL, the sandbox, `llm`/`rlm`, budgets, and the
 `--pretty` trace — a harness just supplies an `instruction` and `tools`.
-
-*(An earlier research harness — paper→Note, corpus ops — lives in git history; it
-was removed to keep this repo focused on the engine.)*
